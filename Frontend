@@ -1,0 +1,65 @@
+Create Frontend
+ 
+ npx create-react-app finance-manager-frontend
+ cd finance-manager-frontend
+ npm install axios react-router-dom socket.io-client
+ 
+ ️ App.js (Main File)
+ 
+ import React from "react";
+ import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+ import Login from "./components/Login";
+ import Register from "./components/Register";
+ import Dashboard from "./components/Dashboard";
+ 
+ function App() {
+     return (
+         <Router>
+             <Routes>
+                 <Route path="/" element={<Login />} />
+                 <Route path="/register" element={<Register />} />
+                 <Route path="/dashboard" element={<Dashboard />} />
+             </Routes>
+         </Router>
+     );
+ }
+ 
+ export default App;
+ 
+ 
+ ---
+ ️ components/Login.js
+ 
+ import React, { useState } from "react";
+ import axios from "axios";
+ import { useNavigate } from "react-router-dom";
+ 
+ const Login = () => {
+     const [email, setEmail] = useState("");
+     const [password, setPassword] = useState("");
+     const navigate = useNavigate();
+ 
+     const handleSubmit = async (e) => {
+         e.preventDefault();
+         try {
+             const res = await axios.post("http://localhost:5000/api/auth/login", { email, password });
+             localStorage.setItem("token", res.data.token);
+             navigate("/dashboard");
+         } catch {
+             alert("Invalid credentials");
+         }
+     };
+ 
+     return (
+         <form onSubmit={handleSubmit}>
+             <input type="email" onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
+             <input type="password" onChange={(e) => setPassword(e.target.value)} placeholder="Password" />
+             <button type="submit">Login</button>
+         </form>
+     );
+ };
+ 
+ export default Login;
+ 
+ 
+ ---
