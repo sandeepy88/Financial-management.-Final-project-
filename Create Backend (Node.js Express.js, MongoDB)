@@ -1,0 +1,174 @@
+Create the Backend Folder
+
+mkdir finance-manager-backend && cd finance-manager-backend
+npm init -y
+
+ Install Dependencies
+
+npm install express mongoose dotenv cors bcryptjs jsonwebtoken socket.io
+npm install nodemon --save-dev
+
+3 Project Structure
+
+finance-manager-backend
+│── server.js
+│── .env
+│── config/
+│   └── db.js
+│── models/
+│   ├── User.js
+│   ├── Expense.js
+│── routes/
+│   ├── authRoutes.js
+│   ├── expenseRoutes.js
+│── middleware/
+│   └── authMiddleware.js
+└── package.json
+
+
+---
+
+ server.js (Main Entry Point)
+
+const express = require("express");
+const dotenv = require("dotenv");
+const cors = require("cors");
+const mongoose = require("./config/db");
+const authRoutes = require("./routes/authRoutes");
+const expenseRoutes = require("./routes/expenseRoutes");
+const { Server } = require("socket.io");
+const http = require("http");
+
+dotenv.config();
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
+app.use(express.json());
+app.use(cors());
+
+app.use("/api/auth", authRoutes);
+app.use("/api/expenses", expenseRoutes);
+
+io.on("connection", (socket) => {
+    console.log("New client connected");
+    socket.on("expenseUpdated", () => io.emit("refreshExpenses"));
+});
+
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+
+---
+
+ config/db.js (Database Connection)
+
+const mongoose = require("mongoose");
+
+mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log("MongoDB Connected"))
+    .catch((err) => console.log(err));
+
+module.exports = mongoose;
+
+
+---
+
+ Models (User.js & Expense.js)
+
+models/User.js
+
+const mongoose = require("mongoose");
+
+const UserSchema = new mongoose.Schema({
+    name: String,
+    email: { type: String, unique: true },
+    password: String,
+});
+
+module.exports = mongoose.model("User", UserSchema);
+
+models/Expense.js
+
+const mongoose = require("mongoose");
+
+const ExpenseSchema = new mongoose.Schema({
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    title: String,
+    amount: Number,
+    category: String,
+    date: { type: Date, default: Date.now },
+});
+
+module.exports = mongoose.model("Expense", ExpenseSchema);
+
+
+---
+
+Authentication (authRoutes.js)
+
+const express = require("express");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+const router = express.Router();
+
+router.post("/register", async (req, res) => {
+    const { name, email, password } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    try {
+        const user = await User.create({ name, email, password: hashedPassword });
+        res.status(201).json(user);
+    } catch (err) {
+        res.status(400).json({ error: "User already exists" });
+    }
+});
+
+router.post("/login", async (req, res) => {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (user && (await bcrypt.compare(password, user.password))) {
+        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
+        res.json({ token, user });
+    } else {
+        res.status(401).json({ error: "Invalid credentials" });
+    }
+});
+
+module.exports = router;
+
+
+---
+
+Expense Routes (expenseRoutes.js)
+
+const express = require("express");
+const Expense = require("../models/Expense");
+const authMiddleware = require("../middleware/authMiddleware");
+const router = express.Router();
+
+router.post("/", authMiddleware, async (req, res) => {
+    const expense = new Expense({ user: req.userId, ...req.body });
+    await expense.save();
+    res.status(201).json(expense);
+});
+
+router.get("/", authMiddleware, async (req, res) => {
+    const expenses = await Expense.find({ user: req.userId });
+    res.json(expenses);
+});
+
+router.put("/:id", authMiddleware, async (req, res) => {
+    const expense = await Expense.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json(expense);
+});
+
+router.delete("/:id", authMiddleware, async (req, res) => {
+    await Expense.findByIdAndDelete(req.params.id);
+    res.json({ message: "Expense deleted" });
+});
+
+module.exports = router;
+
+
+---
